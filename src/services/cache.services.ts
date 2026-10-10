@@ -1,71 +1,89 @@
 type CacheValue = unknown;
 
-class LRUNode {
-  prev: LRUNode | null = null;
-  next: LRUNode | null = null;
-
+class CacheEntry {
   constructor(
-    public key: string,
     public value: CacheValue,
+    public lastAccessed: number,
     public expiresAt: number | null = null,
   ) {}
 }
 
 export class CacheService {
-  private store = new Map<string, LRUNode>();
-
-  private head = new LRUNode("", null);
-  private tail = new LRUNode("", null);
-
+  private store = new Map<string, CacheEntry>();
   constructor(private readonly capacity: number) {
     if (capacity < 1) {
       throw new Error("Capacity must be at least 1");
     }
-
-    this.head.next = this.tail;
-    this.tail.prev = this.head;
   }
 
-  private detach(node: LRUNode): void {
-    node.prev!.next = node.next;
-    node.next!.prev = node.prev;
+  private keys: string[] = [];
+  private keyIndex = new Map<string, number>();
+
+  private addKey(key: string): void {
+    this.keyIndex.set(key, this.keys.length);
+    this.keys.push(key);
   }
 
-  private addToFront(node: LRUNode): void {
-    node.next = this.head.next;
-    node.prev = this.head;
+  private delete(key: string): boolean {
+    if (!this.store.has(key)) return false;
 
-    this.head.next!.prev = node;
-    this.head.next = node;
+    this.store.delete(key);
+
+    const index = this.keyIndex.get(key)!;
+    const lastKey = this.keys[this.keys.length - 1]!;
+
+    this.keys[index] = lastKey;
+    this.keyIndex.set(lastKey, index);
+
+    this.keys.pop();
+    this.keyIndex.delete(key);
+
+    return true;
   }
 
-  private touch(node: LRUNode): void {
-    this.detach(node);
-    this.addToFront(node);
-  }
+  private evictSampledLRU(sampleSize = 5): void {
+    const count = Math.min(sampleSize, this.keys.length);
+    const sampledIndices = new Set<number>();
 
-  private remove(node: LRUNode): void {
-    this.detach(node);
-    this.store.delete(node.key);
+    while (sampledIndices.size < count) {
+      sampledIndices.add(Math.floor(Math.random() * this.keys.length));
+    }
+
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
+
+    for (const index of sampledIndices) {
+      const key = this.keys[index]!;
+      const entry = this.store.get(key)!;
+
+      if (entry.lastAccessed < oldestTime) {
+        oldestTime = entry.lastAccessed;
+        oldestKey = key;
+      }
+    }
+
+    if (oldestKey !== null) {
+      this.store.delete(oldestKey);
+    }
   }
 
   get(key: string): CacheValue | null {
-    const node = this.store.get(key);
+    const entry = this.store.get(key);
 
-    if (!node) return null;
+    if (!entry) return null;
 
-    if (node.expiresAt !== null && node.expiresAt <= Date.now()) {
-      this.remove(node);
+    if (entry.expiresAt !== null && entry.expiresAt <= Date.now()) {
+      this.store.delete(key);
       return null;
     }
 
-    this.touch(node);
-    return node.value;
+    entry.lastAccessed = Date.now();
+    return entry.value;
   }
 
   set(key: string, value: CacheValue, ttlMs?: number): void {
     if (ttlMs !== undefined && ttlMs <= 0) {
-      this.delete(key);
+      this.store.delete(key);
       return;
     }
 
@@ -75,33 +93,14 @@ export class CacheService {
 
     if (existing) {
       existing.value = value;
+      existing.lastAccessed = Date.now();
       existing.expiresAt = expiresAt;
-      this.touch(existing);
       return;
     }
 
-    const node = new LRUNode(key, value, expiresAt);
-
-    this.store.set(key, node);
-    this.addToFront(node);
-
+    this.store.set(key, new CacheEntry(value, Date.now(), expiresAt));
     if (this.store.size > this.capacity) {
-      const lru = this.tail.prev!;
-
-      this.remove(lru);
+      this.evictSampledLRU();
     }
-  }
-
-  delete(key: string): boolean {
-    const node = this.store.get(key);
-
-    if (!node) return false;
-
-    this.remove(node);
-    return true;
-  }
-
-  get size(): number {
-    return this.store.size;
   }
 }
