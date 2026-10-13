@@ -63,7 +63,7 @@ export class CacheService {
     }
 
     if (oldestKey !== null) {
-      this.store.delete(oldestKey);
+      this.delete(oldestKey);
     }
   }
 
@@ -73,7 +73,7 @@ export class CacheService {
     if (!entry) return null;
 
     if (entry.expiresAt !== null && entry.expiresAt <= Date.now()) {
-      this.store.delete(key);
+      this.delete(key);
       return null;
     }
 
@@ -83,7 +83,7 @@ export class CacheService {
 
   set(key: string, value: CacheValue, ttlMs?: number): void {
     if (ttlMs !== undefined && ttlMs <= 0) {
-      this.store.delete(key);
+      this.delete(key);
       return;
     }
 
@@ -99,8 +99,25 @@ export class CacheService {
     }
 
     this.store.set(key, new CacheEntry(value, Date.now(), expiresAt));
+    this.addKey(key);
+
     if (this.store.size > this.capacity) {
       this.evictSampledLRU();
     }
   }
+
+  mget(keys: string[]): (CacheValue | null)[] {
+    return keys.map((key) => this.get(key));
+  }
+
+  del(key: string): boolean {
+    return this.delete(key);
+  }
 }
+
+const cache = new CacheService(100);
+
+cache.set("user:1", "Amos");
+cache.set("user:2", "John");
+
+console.log(cache.mget(["user:1", "missing", "user:2"]));
