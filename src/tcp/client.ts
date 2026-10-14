@@ -1,21 +1,40 @@
 import { Buffer } from "node:buffer";
 import net from "node:net";
-import { encodeRequest, decodeResponses, Op } from "./protocol.js";
+import {
+  encodeRequest,
+  decodeResponses,
+  encodeMgetRequest,
+  Op,
+} from "./protocol.js";
 
 const client = net.createConnection({ host: "127.0.0.1", port: 5000 }, () => {
   console.log("Connected to cache!");
 
   // Send two requests without waiting for the first response.
   // This is pipelining.
-  const setRequest = encodeRequest(Op.SET, "user:1", "Amos");
-  const getRequest = encodeRequest(Op.GET, "user:1");
-  const getRequest2 = encodeRequest(Op.GET, "user:2");
+  // const setRequest = encodeRequest(Op.SET, "user:1", "Amos");
+  //
+  const requests = [
+    encodeRequest(Op.SET, "user:1", "Amos"),
+    encodeRequest(Op.SET, "user:2", "Mira"),
 
-  client.write(Buffer.concat([setRequest, getRequest, getRequest2]));
-  const delRequest = encodeRequest(Op.DEL, "user:1");
-  const getAfterDelete = encodeRequest(Op.GET, "user:1");
+    encodeMgetRequest(["user:1", "missing", "user:2"]),
 
-  client.write(Buffer.concat([delRequest, getAfterDelete]));
+    encodeRequest(Op.SET, "temp", "gone", 1500),
+
+    encodeRequest(Op.GET, "temp"),
+  ];
+
+  client.write(Buffer.concat(requests));
+
+  // const getRequest = encodeRequest(Op.GET, "user:1");
+  // const getRequest2 = encodeRequest(Op.GET, "user:2");
+  //
+  // client.write(Buffer.concat([setRequest, getRequest, getRequest2]));
+  // const delRequest = encodeRequest(Op.DEL, "user:1");
+  // const getAfterDelete = encodeRequest(Op.GET, "user:1");
+  //
+  // client.write(Buffer.concat([delRequest, getAfterDelete]));
 });
 
 // Responses can also arrive split or combined, so buffer them too.
@@ -36,7 +55,14 @@ client.on("data", (chunk: Buffer) => {
   }
 
   // We sent exactly two requests, so close after two responses.
-  if (receivedResponses === 2) {
+  if (receivedResponses === 5) {
+    setTimeout(() => {
+      client.write(encodeRequest(Op.GET, "temp"));
+    }, 1800);
+    // client.end();
+  }
+
+  if (receivedResponses === 6) {
     client.end();
   }
 });

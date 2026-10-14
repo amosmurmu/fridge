@@ -151,3 +151,73 @@ export function decodeResponses(buffer: Buffer): {
     remaining: buffer.subarray(offset),
   };
 }
+
+export function encodeMgetRequest(keys: string[]): Buffer {
+  if (keys.length > 65535) {
+    throw new Error("Too many keys");
+  }
+  const parts: Buffer[] = [];
+  const count = Buffer.alloc(2);
+  count.writeUInt16BE(keys.length, 0);
+  parts.push(count);
+
+  for (const key of keys) {
+    const keyBuffer = Buffer.from(key, "utf8");
+
+    if (keyBuffer.length > 65535) {
+      throw new Error("Key too large");
+    }
+
+    const length = Buffer.alloc(2);
+    length.writeUInt16BE(keyBuffer.length, 0);
+
+    parts.push(length, keyBuffer);
+  }
+
+  const payload = Buffer.concat(parts);
+
+  if (payload.length > 65535) {
+    throw new Error("MGET payload too large");
+  }
+
+  const header = Buffer.alloc(HEADER_SIZE);
+  header.writeUInt8(Op.MGET, 0);
+  header.writeUInt8(0, 1);
+  header.writeUInt16BE(payload.length, 2);
+  header.writeUInt32BE(0, 4);
+  header.writeUInt32BE(0, 8);
+
+  return Buffer.concat([header, payload]);
+}
+
+export function decodeMgetKeys(payload: Buffer): string[] {
+  if (payload.length < 2) {
+    throw new Error("Invalid MGET payload");
+  }
+
+  const count = payload.readUInt16BE(0);
+  const keys: string[] = [];
+  let offset = 2;
+
+  for (let i = 0; i < count; i++) {
+    if (payload.length - offset < 2) {
+      throw new Error("Incomplete MGET key length");
+    }
+
+    const keyLength = payload.readUInt16BE(offset);
+    offset += 2;
+
+    if (payload.length - offset < keyLength) {
+      throw new Error("Incomplete MGET key");
+    }
+
+    keys.push(payload.subarray(offset, offset + keyLength).toString("utf8"));
+
+    offset += keyLength;
+  }
+
+  if (offset !== payload.length) {
+    throw new Error("Unexpected trailing MGET data");
+  }
+  return keys;
+}

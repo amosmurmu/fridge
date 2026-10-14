@@ -1,6 +1,12 @@
 import net from "node:net";
 import { CacheService } from "../services/cache.services.js";
-import { decodeRequests, encodeResponse, Op, Status } from "./protocol.js";
+import {
+  decodeMgetKeys,
+  decodeRequests,
+  encodeResponse,
+  Op,
+  Status,
+} from "./protocol.js";
 
 const cache = new CacheService(1000);
 
@@ -54,7 +60,12 @@ const server = net.createServer((socket) => {
           }
 
           case Op.MGET: {
-            socket.write(encodeResponse(Status.ERROR, "MGET not implemented"));
+            const keys = decodeMgetKeys(request.key);
+            const values = cache.mget(keys);
+
+            socket.write(encodeResponse(Status.OK, JSON.stringify(values)));
+
+            // socket.write(encodeResponse(Status.ERROR, "MGET not implemented"));
             break;
           }
 
