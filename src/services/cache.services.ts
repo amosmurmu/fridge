@@ -114,10 +114,9 @@ export class CacheService {
     return this.delete(key);
   }
 }
-
-const cache = new CacheService(100);
-
-cache.set("user:1", "Amos");
-cache.set("user:2", "John");
-
-console.log(cache.mget(["user:1", "missing", "user:2"]));
+// const cache = new CacheService(100);
+//
+// cache.set("user:1", "Amos");
+// cache.set("user:2", "John");
+//
+// console.log(cache.mget(["user:1", "missing", "user:2"]));

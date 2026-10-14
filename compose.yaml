@@ -1,0 +1,29 @@
+services:
+  cache-a:
+    build: .
+    ports:
+      - "5001:5000"
+
+  cache-b:
+    build: .
+    ports:
+      - "5002:5000"
+
+  cache-c:
+    build: .
+    ports:
+      - "5003:5000"
+
+  router:
+    build: .
+    command: ["npx", "tsx", "src/tcp/router.server.ts"]
+    ports:
+      - "4000:4000"
+    environment:
+      CACHE_A_HOST: cache-a
+      CACHE_B_HOST: cache-b
+      CACHE_C_HOST: cache-c
+    depends_on:
+      - cache-a
+      - cache-b
+      - cache-c
