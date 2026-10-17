@@ -1,45 +1,41 @@
 import { Buffer } from "node:buffer";
 import net from "node:net";
-import {
-  encodeRequest,
-  decodeResponses,
-  encodeMgetRequest,
-  Op,
-} from "./protocol.js";
+import { encodeRequest, decodeResponses, Op, Status } from "./protocol.js";
 
-const client = net.createConnection({ host: "127.0.0.1", port: 5000 }, () => {
-  console.log("Connected to cache!");
+const mode = process.argv[2] ?? "write";
 
-  // Send two requests without waiting for the first response.
-  // This is pipelining.
-  // const setRequest = encodeRequest(Op.SET, "user:1", "Amos");
-  //
-  const requests = [
-    encodeRequest(Op.SET, "user:1", "Amos"),
-    encodeRequest(Op.SET, "user:2", "Mira"),
+// Port 5001 maps to cache-a inside Docker.
+const client = net.createConnection({ host: "127.0.0.1", port: 5001 }, () => {
+  console.log(`Connected to cache A — mode: ${mode}`);
 
-    encodeMgetRequest(["user:1", "missing", "user:2"]),
+  let requests;
 
-    encodeRequest(Op.SET, "temp", "gone", 1500),
-
-    encodeRequest(Op.GET, "temp"),
-  ];
+  if (mode === "write") {
+    requests = [
+      encodeRequest(Op.SET, "persist:keep", "Amos"),
+      encodeRequest(Op.SET, "persist:deleted", "ShouldNotReturn"),
+      encodeRequest(Op.DEL, "persist:deleted"),
+      encodeRequest(Op.SET, "persist:ttl", "ExpiresSoon", 60_000),
+    ];
+  } else if (mode === "verify") {
+    requests = [
+      encodeRequest(Op.GET, "persist:keep"),
+      encodeRequest(Op.GET, "persist:deleted"),
+      encodeRequest(Op.GET, "persist:ttl"),
+    ];
+  } else if (mode === "expired") {
+    requests = [encodeRequest(Op.GET, "persist:ttl")];
+  } else {
+    console.error("Use mode: write, verify, or expired");
+    client.destroy();
+    return;
+  }
 
   client.write(Buffer.concat(requests));
-
-  // const getRequest = encodeRequest(Op.GET, "user:1");
-  // const getRequest2 = encodeRequest(Op.GET, "user:2");
-  //
-  // client.write(Buffer.concat([setRequest, getRequest, getRequest2]));
-  // const delRequest = encodeRequest(Op.DEL, "user:1");
-  // const getAfterDelete = encodeRequest(Op.GET, "user:1");
-  //
-  // client.write(Buffer.concat([delRequest, getAfterDelete]));
 });
 
-// Responses can also arrive split or combined, so buffer them too.
 let pending: Buffer<ArrayBufferLike> = Buffer.alloc(0);
-let receivedResponses = 0;
+let received = 0;
 
 client.on("data", (chunk: Buffer) => {
   pending = Buffer.concat([pending, chunk]);
@@ -48,21 +44,23 @@ client.on("data", (chunk: Buffer) => {
   pending = result.remaining;
 
   for (const response of result.responses) {
-    receivedResponses++;
+    received++;
 
-    console.log("Response status:", response.status);
-    console.log("Response value:", response.value.toString("utf8"));
+    const status =
+      response.status === Status.OK
+        ? "OK"
+        : response.status === Status.NOT_FOUND
+          ? "NOT_FOUND"
+          : `ERROR (${response.status})`;
+
+    console.log(
+      `Response ${received}: ${status} | ${response.value.toString("utf8")}`,
+    );
   }
 
-  // We sent exactly two requests, so close after two responses.
-  if (receivedResponses === 5) {
-    setTimeout(() => {
-      client.write(encodeRequest(Op.GET, "temp"));
-    }, 1800);
-    // client.end();
-  }
+  const expected = mode === "write" ? 4 : mode === "verify" ? 3 : 1;
 
-  if (receivedResponses === 6) {
+  if (received === expected) {
     client.end();
   }
 });
