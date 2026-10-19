@@ -13,7 +13,7 @@ through implementation, not a production-ready Redis replacement.
 
 ## Architecture
 
->
+> ![Fridge Cache Architecture Image](./images/fridge.jpg)
 
 The system consists of a TCP client, a router, and three independent cache nodes.
 
