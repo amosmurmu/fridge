@@ -1,4 +1,4 @@
-# Fridge — Distributed Cache
+# Fridge Distributed Cache
 
 A personal systems programming project to understand how distributed caching
 systems like Redis work internally.
@@ -13,7 +13,9 @@ through implementation, not a production-ready Redis replacement.
 
 ## Architecture
 
-> ![Fridge Cache Architecture Image](./images/fridge.jpg)
+<p align="center">
+  <img src="./images/fridge.svg" alt="Fridge Cache Architecture Image" width="700">
+</p>
 
 The system consists of a TCP client, a router, and three independent cache nodes.
 
